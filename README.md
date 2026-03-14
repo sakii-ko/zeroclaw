@@ -1,17 +1,19 @@
 # Saki ZeroClaw
 
+<p align="center">
+  <img src="assets/saki-zeroclaw-minecraft.jpg" alt="Saki ZeroClaw Minecraft-style project art" width="360">
+</p>
+
 A personalized ZeroClaw distribution for `saki`, focused on QQ delivery, background agent workflows, remote rendering, and everyday research / file / media tasks.
 
-![Saki ZeroClaw Minecraft-style project art](assets/saki-zeroclaw-minecraft.jpg)
-
-This repository is based on a local forked snapshot of upstream ZeroClaw `v0.1.7`, as recorded in `source/Cargo.toml`.
+This repository is based on a local forked snapshot of upstream ZeroClaw `v0.1.7`, as recorded in [source/Cargo.toml](source/Cargo.toml).
 
 ## Upstream Credit
 
-This project builds on the excellent upstream ZeroClaw project by `zeroclaw-labs`:
+This project builds on the excellent upstream ZeroClaw project by [zeroclaw-labs](https://github.com/zeroclaw-labs):
 
-- Upstream repository: `https://github.com/zeroclaw-labs/zeroclaw`
-- Upstream docs / README: `https://github.com/zeroclaw-labs/zeroclaw/blob/main/README.md`
+- Upstream repository: [zeroclaw-labs/zeroclaw](https://github.com/zeroclaw-labs/zeroclaw)
+- Upstream docs / README: [upstream README](https://github.com/zeroclaw-labs/zeroclaw/blob/main/README.md)
 
 If this fork is useful, please also star or follow the upstream project. The core runtime architecture, upstream codebase inside `source/`, and the original project direction all come from ZeroClaw.
 
