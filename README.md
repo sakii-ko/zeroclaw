@@ -2,6 +2,8 @@
 
 A personalized ZeroClaw distribution for `saki`, focused on QQ delivery, background agent workflows, remote rendering, and everyday research / file / media tasks.
 
+![Saki ZeroClaw Minecraft-style project art](assets/saki-zeroclaw-minecraft.jpg)
+
 This repository is based on a local forked snapshot of upstream ZeroClaw `v0.1.7`, as recorded in `source/Cargo.toml`.
 
 ## Upstream Credit
