@@ -3,7 +3,15 @@
 A personalized ZeroClaw distribution for `saki`, focused on QQ delivery, background agent workflows, remote rendering, and everyday research / file / media tasks.
 
 This repository is based on a local forked snapshot of upstream ZeroClaw `v0.1.7`, as recorded in `source/Cargo.toml`.
-Upstream project: `zeroclaw-labs/zeroclaw`.
+
+## Upstream Credit
+
+This project builds on the excellent upstream ZeroClaw project by `zeroclaw-labs`:
+
+- Upstream repository: `https://github.com/zeroclaw-labs/zeroclaw`
+- Upstream docs / README: `https://github.com/zeroclaw-labs/zeroclaw/blob/main/README.md`
+
+If this fork is useful, please also star or follow the upstream project. The core runtime architecture, upstream codebase inside `source/`, and the original project direction all come from ZeroClaw.
 
 ## What This Fork Adds
 
