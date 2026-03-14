@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+import tomllib
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+
+def load_config() -> dict:
+    cfg_path = Path.home() / '.zeroclaw' / 'config.toml'
+    return tomllib.loads(cfg_path.read_text(encoding='utf-8'))
+
+
+def gateway_url(cfg: dict) -> str:
+    gw = cfg.get('gateway') or {}
+    host = str(gw.get('host') or '127.0.0.1').strip()
+    port = int(gw.get('port') or 42617)
+    if host in {'0.0.0.0', '::', '[::]', ''}:
+        host = '127.0.0.1'
+    elif host.startswith('[') and host.endswith(']'):
+        host = host[1:-1]
+    return f'http://{host}:{port}/webhook'
+
+
+def build_headers(cfg: dict) -> dict[str, str]:
+    headers = {'Content-Type': 'application/json'}
+    gw = cfg.get('gateway') or {}
+    tokens = gw.get('paired_tokens') or []
+    if gw.get('require_pairing') and tokens:
+        headers['Authorization'] = f'Bearer {tokens[0]}'
+    secret = (cfg.get('webhook') or {}).get('secret') if isinstance(cfg.get('webhook'), dict) else None
+    if isinstance(secret, str) and secret.strip():
+        headers['X-Webhook-Secret'] = secret.strip()
+    return headers
+
+
+def webhook_chat(prompt: str) -> str:
+    cfg = load_config()
+    url = gateway_url(cfg)
+    headers = build_headers(cfg)
+    payload = json.dumps({'message': prompt}).encode('utf-8')
+    req = urllib.request.Request(url, data=payload, headers=headers, method='POST')
+    with urllib.request.urlopen(req, timeout=240) as resp:
+        body = resp.read().decode('utf-8', errors='replace')
+    data = json.loads(body) if body.strip() else {}
+    response = data.get('response')
+    if not isinstance(response, str) or not response.strip():
+        raise RuntimeError(f'Webhook returned no response field: {data!r}')
+    return response.strip()
+
+
+def cli_fallback(prompt: str) -> str:
+    cmd = [
+        str(Path(__file__).resolve().parent / 'zeroclaw-real'),
+        'agent',
+        '-m',
+        prompt,
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f'agent fallback failed: rc={proc.returncode} stderr={proc.stderr[:800]}')
+    out = proc.stdout.strip()
+    if not out:
+        raise RuntimeError('agent fallback returned empty output')
+    return out
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description='Send an internal callback prompt through saki and print the reply')
+    ap.add_argument('--fallback-cli', action='store_true', help='Fallback to `zeroclaw-real agent -m` if webhook fails')
+    ap.add_argument('prompt', nargs='*', help='Prompt text; if omitted, read from stdin')
+    args = ap.parse_args()
+    prompt = ' '.join(args.prompt).strip() if args.prompt else sys.stdin.read().strip()
+    if not prompt:
+        raise SystemExit('prompt is required')
+    try:
+        print(webhook_chat(prompt))
+        return 0
+    except Exception as exc:
+        if not args.fallback_cli:
+            raise SystemExit(f'saki-internal-chat webhook failed: {exc}')
+        print(cli_fallback(prompt))
+        return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

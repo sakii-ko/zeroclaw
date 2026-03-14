@@ -1,0 +1,39 @@
+# Local runtime / private workspace files
+SOUL.md
+TOOLS.md
+IDENTITY.md
+USER.md
+**/SOUL.md
+**/TOOLS.md
+**/IDENTITY.md
+**/USER.md
+**/service.env
+**/auth.json
+**/*.secret*
+**/*.key
+
+# Generated artifacts / local state
+build/
+downloads/
+source/target/
+source/.tmp_*
+open-skills/.zeroclaw-open-skills-sync
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+
+# Local binaries and backups
+bin/zeroclaw-real
+bin/zeroclaw-real.*
+bin/*.bak
+bin/*.bak-*
+bin/*.bak.*
+bin/*.from-duan78*
+
+# Env files
+.env
+.env.*
+!.env.example
+source/.env
+source/.env.*
+!source/.env.example

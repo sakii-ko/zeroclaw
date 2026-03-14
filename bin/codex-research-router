@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+MODEL="${CODEX_RESEARCH_MODEL:-gpt-5.4}"
+REASONING="${CODEX_RESEARCH_REASONING:-medium}"
+WORKDIR="${CODEX_RESEARCH_WORKDIR:-/tmp}"
+SESSION="${CODEX_RESEARCH_SESSION:-saki-codex}"
+NAME="${CODEX_RESEARCH_NAME:-research}"
+RECIPIENT="${CODEX_RESEARCH_RECIPIENT:-}"
+
+usage() {
+  cat <<'USAGE'
+Usage: codex-research-router [--name NAME] [--model MODEL] [--reasoning LEVEL] [--workdir DIR] [--session SESSION] [--recipient TARGET] [--] [PROMPT...]
+
+Starts a background Codex research job in tmux and returns immediately with job metadata.
+If no prompt arguments are given, reads the prompt from stdin.
+
+Options:
+  --name NAME            Human-friendly job name (default: research)
+  --model MODEL          Override model (default: gpt-5.4)
+  --reasoning LEVEL      low | medium | high | xhigh (default: medium)
+  --workdir DIR          Working directory for Codex (default: /tmp)
+  --session SESSION      tmux session name (default: saki-codex)
+  --recipient TARGET     Completion push target, e.g. user:<openid>
+  -h, --help             Show this help
+USAGE
+}
+
+while (($#)); do
+  case "$1" in
+    --name)
+      NAME="$2"
+      shift 2
+      ;;
+    --model)
+      MODEL="$2"
+      shift 2
+      ;;
+    --reasoning|--effort)
+      REASONING="$2"
+      shift 2
+      ;;
+    --workdir|-C)
+      WORKDIR="$2"
+      shift 2
+      ;;
+    --session)
+      SESSION="$2"
+      shift 2
+      ;;
+    --recipient)
+      RECIPIENT="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+if (($#)); then
+  USER_PROMPT="$*"
+else
+  USER_PROMPT="$(cat)"
+fi
+
+if [[ -z "${USER_PROMPT//[$' \t\r\n']/}" ]]; then
+  echo "codex-research-router: prompt is required" >&2
+  exit 2
+fi
+
+PROMPT_FILE="$(mktemp)"
+cleanup() {
+  rm -f "$PROMPT_FILE"
+}
+trap cleanup EXIT
+
+cat > "$PROMPT_FILE" <<PROMPT
+You are a research subroutine called by ZeroClaw.
+This run is launched in the background and should finish the whole research task before replying.
+Primary objective: research the user's request on the public web using live search/browsing, then return the answer in the format the user asked for.
+Rules:
+- Prefer public web sources and direct links when useful.
+- Do not run shell commands or inspect local files unless the user explicitly asks for local/system inspection.
+- When recency matters, verify the latest information before answering.
+- If the user asks for sources, include the most relevant links.
+- Keep the final answer concise unless the user asked for detail.
+
+User request:
+${USER_PROMPT}
+PROMPT
+
+CMD=(
+  "$SCRIPT_DIR/codex-tmux"
+  start
+  --name "$NAME"
+  --cwd "$WORKDIR"
+  --prompt-file "$PROMPT_FILE"
+  --search
+  --session "$SESSION"
+  --model "$MODEL"
+  --reasoning "$REASONING"
+)
+
+if [[ -n "$RECIPIENT" ]]; then
+  CMD+=(--recipient "$RECIPIENT")
+fi
+
+"${CMD[@]}"

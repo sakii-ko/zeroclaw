@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CODEX_BIN_DEFAULT="codex"
+CODEX_BIN="${CODEX_RESEARCH_BIN:-$CODEX_BIN_DEFAULT}"
+MODEL="${CODEX_RESEARCH_MODEL:-gpt-5.4}"
+REASONING="${CODEX_RESEARCH_REASONING:-medium}"
+WORKDIR="${CODEX_RESEARCH_WORKDIR:-/tmp}"
+TIMEOUT_SECS="${CODEX_RESEARCH_TIMEOUT_SECS:-180}"
+
+usage() {
+  cat <<'USAGE'
+Usage: codex-research [--model MODEL] [--reasoning LEVEL] [--workdir DIR] [--timeout SECONDS] [--] [PROMPT...]
+
+Runs a single Codex research pass using live web search and returns only the final answer.
+If no prompt arguments are given, reads the prompt from stdin.
+
+Options:
+  --model MODEL          Override model (default: gpt-5.4)
+  --reasoning LEVEL      low | medium | high | xhigh (default: medium)
+  --workdir DIR          Working directory for Codex exec (default: /tmp)
+  --timeout SECONDS      Hard timeout in seconds (default: 180)
+  -h, --help             Show this help
+USAGE
+}
+
+while (($#)); do
+  case "$1" in
+    --model)
+      MODEL="$2"
+      shift 2
+      ;;
+    --reasoning|--effort)
+      REASONING="$2"
+      shift 2
+      ;;
+    --workdir|-C)
+      WORKDIR="$2"
+      shift 2
+      ;;
+    --timeout)
+      TIMEOUT_SECS="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+if (($#)); then
+  USER_PROMPT="$*"
+else
+  USER_PROMPT="$(cat)"
+fi
+
+if [[ -z "${USER_PROMPT//[$' \t\r\n']/}" ]]; then
+  echo "codex-research: prompt is required" >&2
+  exit 2
+fi
+
+if [[ ! -x "$CODEX_BIN" ]]; then
+  if command -v codex >/dev/null 2>&1; then
+    CODEX_BIN="$(command -v codex)"
+  else
+    echo "codex-research: codex binary not found" >&2
+    exit 127
+  fi
+fi
+
+CODEX_BINDIR="$(dirname "$CODEX_BIN")"
+export PATH="$CODEX_BINDIR${PATH:+:$PATH}"
+
+OUT_FILE="$(mktemp)"
+LOG_FILE="$(mktemp)"
+cleanup() {
+  rm -f "$OUT_FILE" "$LOG_FILE"
+}
+trap cleanup EXIT
+
+read -r -d '' SYSTEMIZED_PROMPT <<PROMPT || true
+You are a research subroutine called by ZeroClaw.
+Primary objective: research the user's request on the public web using live search/browsing, then return the answer in the format the user asked for.
+Rules:
+- Prefer public web sources and direct links when useful.
+- Do not run shell commands or inspect local files unless the user explicitly asks for local/system inspection.
+- When recency matters, verify the latest information before answering.
+- If the user asks for sources, include the most relevant links.
+- Keep the final answer concise unless the user asked for detail.
+
+User request:
+${USER_PROMPT}
+PROMPT
+
+CMD=(
+  "$CODEX_BIN"
+  --search
+  -s read-only
+  exec
+  --skip-git-repo-check
+  -C "$WORKDIR"
+  -m "$MODEL"
+  -c "model_reasoning_effort=\"$REASONING\""
+  -o "$OUT_FILE"
+  "$SYSTEMIZED_PROMPT"
+)
+
+run_and_capture() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout --foreground "${TIMEOUT_SECS}s" "${CMD[@]}" >"$LOG_FILE" 2>&1
+  else
+    "${CMD[@]}" >"$LOG_FILE" 2>&1
+  fi
+}
+
+if run_and_capture; then
+  rc=0
+else
+  rc=$?
+  echo "codex-research: codex exec failed (exit $rc)" >&2
+  sed -n '1,120p' "$LOG_FILE" >&2 || true
+  exit "$rc"
+fi
+
+if [[ ! -s "$OUT_FILE" ]]; then
+  echo "codex-research: empty answer from codex" >&2
+  sed -n '1,120p' "$LOG_FILE" >&2 || true
+  exit 1
+fi
+
+cat "$OUT_FILE"

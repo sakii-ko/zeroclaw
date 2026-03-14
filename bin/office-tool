@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -euo pipefail
+exec "$HOME/utils/zeroclaw/office-files/scripts/office_tool.sh" "$@"
