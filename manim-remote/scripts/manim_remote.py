@@ -15,17 +15,84 @@ from pathlib import Path
 STATE_ROOT = Path.home() / '.zeroclaw' / 'workspace' / 'state' / 'manim-remote'
 JOBS_ROOT = STATE_ROOT / 'jobs'
 LOCAL_OUTPUT_ROOT = Path.home() / 'downloads' / 'processed' / 'manim'
-DEFAULT_REMOTE_HOST = 'duan78'
-DEFAULT_REMOTE_BASE = '/home/lff/agent-work/manim-jobs'
-DEFAULT_REMOTE_CODEX_BIN = '/home/lff/opt/node-v24.14.0-linux-x64/bin/codex'
-DEFAULT_REMOTE_NODE_BIN = '/home/lff/opt/node-v24.14.0-linux-x64/bin'
-DEFAULT_REMOTE_MANIM_BIN = '/home/lff/miniconda3/envs/manim/bin/manim'
-DEFAULT_REMOTE_PYTHON = '/home/lff/miniconda3/envs/manim/bin/python'
+PRIVATE_REMOTE_CONFIG_PATH = Path.home() / '.zeroclaw' / 'manim-remote.json'
+
+
+def load_private_remote_config() -> dict[str, str]:
+    data: dict[str, str] = {}
+    try:
+        loaded = json.loads(PRIVATE_REMOTE_CONFIG_PATH.read_text(encoding='utf-8'))
+    except FileNotFoundError:
+        loaded = {}
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f'invalid private remote config: {PRIVATE_REMOTE_CONFIG_PATH}: {exc}')
+    if isinstance(loaded, dict):
+        for key, value in loaded.items():
+            if value is None:
+                continue
+            data[str(key)] = str(value).strip()
+    env_map = {
+        'host': 'ZEROCLAW_MANIM_REMOTE_HOST',
+        'home': 'ZEROCLAW_MANIM_REMOTE_HOME',
+        'base': 'ZEROCLAW_MANIM_REMOTE_BASE',
+        'codex_bin': 'ZEROCLAW_MANIM_REMOTE_CODEX_BIN',
+        'node_bin': 'ZEROCLAW_MANIM_REMOTE_NODE_BIN',
+        'manim_bin': 'ZEROCLAW_MANIM_REMOTE_MANIM_BIN',
+        'python_bin': 'ZEROCLAW_MANIM_REMOTE_PYTHON_BIN',
+        'shell': 'ZEROCLAW_MANIM_REMOTE_SHELL',
+        'skill_path': 'ZEROCLAW_MANIM_REMOTE_SKILL_PATH',
+    }
+    for key, env_name in env_map.items():
+        raw = os.environ.get(env_name, '').strip()
+        if raw:
+            data[key] = raw
+    return data
+
+
+def remote_setting(key: str, default: str) -> str:
+    value = PRIVATE_REMOTE_CONFIG.get(key, '').strip()
+    return value or default
+
+
+def remote_shell_name() -> str:
+    return Path(DEFAULT_REMOTE_SHELL).name or 'sh'
+
+
+def remote_shell_bootstrap_command() -> str:
+    shell_name = remote_shell_name()
+    return f'{shell_name} -lc {shlex.quote(f"exec {shell_name}")}'
+
+
+def remote_path_env() -> str:
+    entries = [
+        DEFAULT_REMOTE_NODE_BIN,
+        str(Path(DEFAULT_REMOTE_MANIM_BIN).parent),
+        '/usr/local/bin',
+        '/usr/bin',
+        '/bin',
+    ]
+    unique: list[str] = []
+    for entry in entries:
+        entry = entry.strip()
+        if entry and entry not in unique:
+            unique.append(entry)
+    return ':'.join(unique)
+
+
+PRIVATE_REMOTE_CONFIG = load_private_remote_config()
+DEFAULT_REMOTE_HOST = remote_setting('host', 'remote-manim-host')
+DEFAULT_REMOTE_HOME = remote_setting('home', '/home/remoteuser')
+DEFAULT_REMOTE_BASE = remote_setting('base', f'{DEFAULT_REMOTE_HOME}/agent-work/manim-jobs')
+DEFAULT_REMOTE_CODEX_BIN = remote_setting('codex_bin', f'{DEFAULT_REMOTE_HOME}/.local/bin/codex')
+DEFAULT_REMOTE_NODE_BIN = remote_setting('node_bin', f'{DEFAULT_REMOTE_HOME}/.local/bin')
+DEFAULT_REMOTE_MANIM_BIN = remote_setting('manim_bin', f'{DEFAULT_REMOTE_HOME}/miniconda3/envs/manim/bin/manim')
+DEFAULT_REMOTE_PYTHON = remote_setting('python_bin', f'{DEFAULT_REMOTE_HOME}/miniconda3/envs/manim/bin/python')
+DEFAULT_REMOTE_SHELL = remote_setting('shell', '/bin/zsh')
 DEFAULT_SESSION = 'saki-manim'
 DEFAULT_STALL_MINUTES = 25
 DEFAULT_FINAL_QUALITY = 'm'
 DEFAULT_QQ_RECIPIENT = os.environ.get('ZEROCLAW_QQ_RECIPIENT', '').strip()
-REMOTE_SKILL_PATH = '/home/lff/.codex/skills/manim-render/SKILL.md'
+REMOTE_SKILL_PATH = remote_setting('skill_path', f'{DEFAULT_REMOTE_HOME}/.codex/skills/manim-render/SKILL.md')
 LOCAL_REMOTE_SKILL_TEMPLATE = Path(__file__).resolve().parents[1] / 'templates' / 'remote_manim_skill.md'
 
 
@@ -126,7 +193,7 @@ def remote_doctor(host: str, remote_base: str) -> str:
     cmd = textwrap.dedent(
         f'''\
         set -euo pipefail
-        export PATH={shlex.quote(DEFAULT_REMOTE_NODE_BIN)}:/home/lff/miniconda3/envs/manim/bin:/usr/local/bin:/usr/bin:/bin
+        export PATH={shlex.quote(remote_path_env())}
         mkdir -p {shlex.quote(remote_base)}
         printf 'host=%s\n' "$(hostname)"
         printf 'user=%s\n' "$(whoami)"
@@ -159,7 +226,7 @@ def render_helper_script(remote_job_dir: str) -> str:
         OUT_PATH=${{4:-exports/final.mp4}}
         JOB_DIR={shlex.quote(remote_job_dir)}
         MANIM_BIN={shlex.quote(manim_bin)}
-        export PATH={shlex.quote(DEFAULT_REMOTE_NODE_BIN)}:/home/lff/miniconda3/envs/manim/bin:/usr/local/bin:/usr/bin:/bin
+        export PATH={shlex.quote(remote_path_env())}
         cd "$JOB_DIR"
         mkdir -p "$(dirname "$OUT_PATH")" "$JOB_DIR/media"
         "$MANIM_BIN" -q "$QUALITY" --disable_caching --media_dir "$JOB_DIR/media" "$SCENE_FILE" "$SCENE_NAME"
@@ -220,9 +287,9 @@ def build_runner_script(remote_job_dir: str, signal_name: str) -> str:
         f'''\
         #!/usr/bin/env bash
         set -euo pipefail
-        export PATH={shlex.quote(DEFAULT_REMOTE_NODE_BIN)}:/home/lff/miniconda3/envs/manim/bin:/usr/local/bin:/usr/bin:/bin
-        export HOME=/home/lff
-        export SHELL=/bin/zsh
+        export PATH={shlex.quote(remote_path_env())}
+        export HOME={shlex.quote(DEFAULT_REMOTE_HOME)}
+        export SHELL={shlex.quote(DEFAULT_REMOTE_SHELL)}
         export TERM=xterm-256color
         JOB_DIR={shlex.quote(remote_job_dir)}
         STATE_DIR={shlex.quote(state_dir)}
@@ -287,7 +354,7 @@ def ensure_remote_tmux_session(host: str, session: str) -> None:
         if tmux has-session -t {shlex.quote(session)} 2>/dev/null; then
           exit 0
         fi
-        env PATH={shlex.quote(DEFAULT_REMOTE_NODE_BIN + ':/home/lff/miniconda3/envs/manim/bin:/usr/local/bin:/usr/bin:/bin')} HOME=/home/lff SHELL=/bin/zsh tmux new-session -d -s {shlex.quote(session)} -n scratch 'zsh -lc "exec zsh"'
+        env PATH={shlex.quote(remote_path_env())} HOME={shlex.quote(DEFAULT_REMOTE_HOME)} SHELL={shlex.quote(DEFAULT_REMOTE_SHELL)} tmux new-session -d -s {shlex.quote(session)} -n scratch {shlex.quote(remote_shell_bootstrap_command())}
         '''
     )
     ssh_cmd(host, cmd)
@@ -505,7 +572,7 @@ def cmd_start(args: argparse.Namespace) -> int:
     ssh_cmd(args.host, f'mkdir -p {shlex.quote(remote_job_dir)} && rm -rf {shlex.quote(remote_job_dir)}/*')
     scp_to(args.host, bundle_dir, remote_job_dir)
     ssh_cmd(args.host, f'cp -a {shlex.quote(remote_job_dir)}/bundle/. {shlex.quote(remote_job_dir)}/ && rm -rf {shlex.quote(remote_job_dir)}/bundle && chmod +x {shlex.quote(remote_job_dir)}/scripts/render_manim.sh {shlex.quote(remote_job_dir)}/state/runner.sh')
-    runner_cmd = f'env PATH={shlex.quote(DEFAULT_REMOTE_NODE_BIN + ":/home/lff/miniconda3/envs/manim/bin:/usr/local/bin:/usr/bin:/bin")} HOME=/home/lff SHELL=/bin/zsh bash -lc {shlex.quote(remote_job_dir + "/state/runner.sh; exec zsh")}'
+    runner_cmd = f'env PATH={shlex.quote(remote_path_env())} HOME={shlex.quote(DEFAULT_REMOTE_HOME)} SHELL={shlex.quote(DEFAULT_REMOTE_SHELL)} bash -lc {shlex.quote(remote_job_dir + "/state/runner.sh; exec " + remote_shell_name())}'
     ssh_cmd(args.host, f'tmux new-window -d -t {shlex.quote(args.session)} -n {shlex.quote(window_name)} {shlex.quote(runner_cmd)}')
     spawn_waiter(job_id, notify_qq=True)
     print(f'job={job_id}')
