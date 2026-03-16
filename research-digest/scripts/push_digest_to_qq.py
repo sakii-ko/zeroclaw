@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 import re
 import sqlite3
 import subprocess
@@ -23,7 +24,7 @@ DEFAULT_WINDOW_DAYS = 7
 TEXT_CHUNK_LIMIT = 3500
 QQ_HTTP_TIMEOUT_SECS = 12
 DIGEST_COMMAND_TIMEOUT_SECS = 95
-DIGEST_RETRY_DELAYS = ()
+DIGEST_RETRY_DELAYS = (20.0, 60.0)
 DELIVERY_STATE_KEEP_DAYS = 45
 DELIVERY_DB_PATH = Path.home() / '.zeroclaw' / 'workspace' / 'state' / 'research_digest_delivery.db'
 
